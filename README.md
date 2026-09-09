@@ -75,39 +75,25 @@ Showrunner AI actively integrates the **Parallel Search & Extract API** (`parall
 - **Python 3.10+**
 - **Node.js 18+** & **npm**
 
-### 2. Backend Setup
+### 2. Single-Command Launch (Recommended)
+You can launch the entire full-stack studio with a single command:
 ```bash
-# Navigate to backend
-cd backend
+# Option A: Python runner
+python run.py
 
-# Install dependencies
-pip install -r requirements.txt
-# (or: pip install parallel-web google-genai fastapi uvicorn pydantic python-dotenv httpx pytest)
-
-# Set optional API keys in .env or environment
-export PARALLEL_API_KEY="your_parallel_key_here"
-export GEMINI_API_KEY="your_gemini_key_here"
-
-# Run tests
-pytest -v ../tests/
-
-# Launch FastAPI server
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# Option B: npm runner
+npm start
 ```
+*This command cleans up stale ports, verifies your `.env` keys, boots the FastAPI backend and Vite frontend, outputs a terminal status interface, and automatically launches `http://localhost:5173` in your browser!*
 
-### 3. Frontend Setup
-```bash
-# Navigate to frontend
-cd frontend
+### 3. Factory Reset & Clean Slate
+Showrunner AI starts with **Zero Synthetic Data** (clean factory reset). You can enter any topic in the DeepSeek-inspired chat interface, attach a PDF treatment, or click one of the suggested prompts to direct your video.
 
-# Install dependencies
-npm install
-
-# Start Vite dev server
-npm run dev
-```
-
-Open `http://localhost:5173` in your browser.
+### 4. Direct On-Canvas Component Editing
+When the video inference finishes:
+- Click **Download Video Package** to export the production package.
+- Click **Edit in Studio** to open the video on the right.
+- Click on any text component in the video to bring up the floating toolbar (adjust font size, family, color, or text directly with 0 AI token cost).
 
 ---
 
