@@ -13,13 +13,15 @@ class ParallelTool:
     Uses the official parallel-web SDK with resilient fallback mode.
     """
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.PARALLEL_API_KEY
+        raw_key = api_key or settings.PARALLEL_API_KEY
+        self.api_key = raw_key.strip() if raw_key else ""
         self.client = None
         if self.api_key:
             try:
                 from parallel import Parallel
                 self.client = Parallel(api_key=self.api_key)
-                logger.info("Initialized live Parallel client successfully.")
+                masked = f"{self.api_key[:6]}...{self.api_key[-4:]}"
+                logger.info(f"[LIVE PARALLEL] Initialized live Parallel client successfully with key {masked}.")
             except Exception as e:
                 logger.warning(f"Could not initialize Parallel client: {e}. Falling back to simulation mode.")
 
@@ -42,7 +44,8 @@ class ParallelTool:
 
         if self.client:
             try:
-                logger.info(f"Invoking Parallel Search API for topic: {topic}")
+                masked = f"{self.api_key[:6]}...{self.api_key[-4:]}"
+                logger.info(f"[LIVE PARALLEL CALL] Invoking Parallel Search API for topic: '{topic}' (Key: {masked})")
                 response = self.client.search(
                     objective=objective,
                     search_queries=search_queries,
@@ -74,6 +77,7 @@ class ParallelTool:
                             source_url=res.url
                         ))
                 
+                logger.info(f"[LIVE PARALLEL SUCCESS] Parallel Web live crawl returned {len(sources)} grounded sources and {len(key_facts)} key facts for '{topic}'.")
                 return ResearchDossier(
                     topic=topic,
                     objective=objective,
