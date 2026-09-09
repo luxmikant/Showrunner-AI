@@ -83,10 +83,14 @@ export interface ShowrunnerProject {
 }
 
 export interface ChatMessage {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
   citations?: string[];
+  thinking?: string;
+  projectResult?: ShowrunnerProject;
+  videoReady?: boolean;
 }
 
 export interface BoundingBox {
