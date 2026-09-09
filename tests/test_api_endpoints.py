@@ -1,4 +1,11 @@
 import pytest
+import sys
+from pathlib import Path
+
+# Add backend to sys.path
+backend_path = Path(__file__).resolve().parent.parent / "backend"
+sys.path.insert(0, str(backend_path))
+
 from fastapi.testclient import TestClient
 from app.main import app
 from app.models.schemas import ScriptBeat
