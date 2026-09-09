@@ -73,6 +73,7 @@ class ShowrunnerProject(BaseModel):
     target_audience: str = "Tech & Narrative Video Essay enthusiasts"
     research: ResearchDossier
     script_beats: List[ScriptBeat] = Field(default_factory=list)
+    storyboard_cards: Optional[List[dict]] = None
     packaging: PackagingSuite
     metrics: PacingMetrics
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -104,11 +105,14 @@ class ChatRequest(BaseModel):
     document_context: Optional[str] = None
     parallel_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    deep_search: bool = True
 
 class ChatResponse(BaseModel):
     reply: str
     updated_project: Optional[ShowrunnerProject] = None
     citations: List[str] = Field(default_factory=list)
+    thinking: Optional[str] = None
+    video_ready: bool = False
 
 class BoundingBox(BaseModel):
     x: float
@@ -122,10 +126,12 @@ class SpatialCommentRequest(BaseModel):
     bounding_box: BoundingBox
     instruction: str
     gemini_api_key: Optional[str] = None
+    original_beat: Optional[ScriptBeat] = None
 
 class UpdateBeatRequest(BaseModel):
     project_id: str
     beat: ScriptBeat
+    all_beats: Optional[List[ScriptBeat]] = None
 
 class DocumentUploadResponse(BaseModel):
     filename: str
