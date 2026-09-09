@@ -1,0 +1,11 @@
+{
+  "name": "showrunner-ai",
+  "version": "1.0.0",
+  "description": "Autonomous AI Showrunner Studio for Digital Filmmakers & YouTube Creators",
+  "scripts": {
+    "start": "python run.py",
+    "dev": "python run.py",
+    "verify": "python backend/verify_keys.py",
+    "test": "pytest -v tests/"
+  }
+}
