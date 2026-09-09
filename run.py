@@ -76,7 +76,8 @@ def main():
     backend_cmd = [
         sys.executable, "-m", "uvicorn", "app.main:app",
         "--host", backend_host,
-        "--port", backend_port
+        "--port", backend_port,
+        "--reload"
     ]
     backend_proc = subprocess.Popen(
         backend_cmd,
