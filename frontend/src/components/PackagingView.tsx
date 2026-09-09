@@ -60,8 +60,8 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
 
         {/* Overall Retention Health */}
         <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
-            <TrendingUp className="w-6 h-6 text-amber-400" />
+          <div className="h-12 w-12 rounded-xl bg-[var(--gold-500)]/10 border border-[var(--gold-500)]/30 flex items-center justify-center shrink-0">
+            <TrendingUp className="w-6 h-6 text-[var(--gold-400)]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -70,7 +70,7 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
               </span>
               <span className="text-xs text-emerald-400 font-mono">Optimal</span>
             </div>
-            <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+            <p className="text-xs font-semibold text-[var(--gold-400)] uppercase tracking-wider">
               Pacing Retention Index
             </p>
           </div>
@@ -87,7 +87,7 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
           </div>
           <div className="space-y-1.5 pl-6 list-disc text-xs text-rose-200/90">
             {metrics.pacing_warnings.map((warn, i) => (
-              <p key={i}>• {warn}</p>
+               <p key={i}>• {warn}</p>
             ))}
           </div>
         </div>
@@ -96,7 +96,7 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
       {/* High-CTR Titles Section */}
       <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-5 space-y-4">
         <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-          <Target className="w-4 h-4 text-amber-500" />
+          <Target className="w-4 h-4 text-[var(--gold-500)]" />
           <span>High-CTR Title Options ({packaging.high_ctr_titles.length})</span>
         </h3>
 
@@ -104,11 +104,11 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
           {packaging.high_ctr_titles.map((titleOpt, idx) => (
             <div
               key={idx}
-              className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-amber-500/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-[var(--gold-500)]/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[var(--gold-500)]/10 text-[var(--gold-400)] border border-[var(--gold-500)]/30">
                     OPTION #{idx + 1}
                   </span>
                   <span className="text-xs text-slate-400 font-mono">
@@ -162,7 +162,7 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
                 </span>
                 
                 {/* Bold Click-Driving Text Overlay */}
-                <span className="text-xl font-black tracking-tight text-amber-400 uppercase drop-shadow-[0_2px_10px_rgba(245,158,11,0.5)]">
+                <span className="text-xl font-black tracking-tight text-[var(--gold-400)] uppercase drop-shadow-[0_2px_10px_rgba(212,168,83,0.5)]">
                   {thumb.text_overlay}
                 </span>
 
@@ -177,7 +177,7 @@ export const PackagingView: React.FC<PackagingViewProps> = ({ packaging, metrics
                   <span className="text-slate-400 font-medium">Palette:</span>
                   <span className="text-purple-300 font-mono">{thumb.color_contrast_scheme}</span>
                 </div>
-                <p className="text-[11px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-850 line-clamp-3">
+                <p className="text-[11px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-800 line-clamp-3">
                   <span className="font-semibold text-slate-400">Prompt: </span>
                   {thumb.visual_prompt}
                 </p>

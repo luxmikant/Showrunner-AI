@@ -38,7 +38,7 @@ export const ResearchDrawer: React.FC<ResearchDrawerProps> = ({ research }) => {
                   <p className="text-slate-200 leading-relaxed font-medium">
                     "{item.fact}"
                   </p>
-                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-850">
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
                     <span className="text-slate-400 font-mono truncate max-w-[260px]">
                       {item.source_title}
                     </span>
@@ -60,13 +60,13 @@ export const ResearchDrawer: React.FC<ResearchDrawerProps> = ({ research }) => {
           {/* Competitor Blindspots */}
           <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-4 space-y-3">
             <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-400" />
+              <AlertCircle className="w-4 h-4 text-[var(--gold-400)]" />
               <span>Competitor Video Blindspots & Narrative Gaps</span>
             </h4>
             <div className="space-y-2">
               {research.competitor_blindspots.map((gap, idx) => (
-                <div key={idx} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-slate-300">
-                  <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                <div key={idx} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-[var(--gold-500)]/5 border border-[var(--gold-500)]/20 text-xs text-slate-300">
+                  <span className="w-4 h-4 rounded-full bg-[var(--gold-500)]/20 text-[var(--gold-400)] flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
                     {idx + 1}
                   </span>
                   <p className="leading-snug">{gap}</p>
@@ -107,7 +107,7 @@ export const ResearchDrawer: React.FC<ResearchDrawerProps> = ({ research }) => {
                   </span>
 
                   {source.excerpts && source.excerpts.length > 0 && (
-                    <p className="text-slate-400 text-[11px] leading-relaxed line-clamp-3 bg-slate-900/50 p-2 rounded border border-slate-850">
+                    <p className="text-slate-400 text-[11px] leading-relaxed line-clamp-3 bg-slate-900/50 p-2 rounded border border-slate-800">
                       {source.excerpts[0]}
                     </p>
                   )}
