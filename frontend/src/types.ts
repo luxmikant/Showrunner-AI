@@ -127,3 +127,34 @@ export interface TextOverlaySettings {
   backgroundColor: string;
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  project_id?: string | null;
+}
+
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  messages: ChatMessage[];
+  project_state?: ShowrunnerProject | null;
+}
+
+export interface ProjectFolder {
+  id: string;
+  name: string;
+  slug: string;
+  folder_path: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  conversations: ConversationSummary[];
+}
+
+

@@ -1,12 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
-import type { ChatMessage, ShowrunnerProject, DocumentUploadResponse } from '../types';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { 
+  ChatMessage, 
+  ShowrunnerProject, 
+  DocumentUploadResponse,
+  ProjectFolder,
+  ConversationSummary,
+  ConversationDetail
+} from '../types';
 import { 
   Plus, Sparkles, Globe, Download, 
   Film, Settings, ChevronDown, ChevronRight,
   ArrowUp, RefreshCw, X, FileText,
   Clock, Timer, Folder, FolderOpen, PanelLeft,
   ArrowLeft, ArrowRight, CheckCircle2, Mic, Terminal,
-  ChevronUp
+  ChevronUp, Trash2, Check, Search, MessageSquare
 } from 'lucide-react';
 
 interface DeepSeekChatProps {
@@ -21,6 +28,20 @@ interface DeepSeekChatProps {
   onReturnToLanding?: () => void;
   initialPrompt?: string;
 }
+
+const formatTimeAgo = (iso?: string): string => {
+  if (!iso) return '';
+  try {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+};
 
 export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
   project,
@@ -46,9 +67,21 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
+  // Real Persistent Storage State
+  const [projects, setProjects] = useState<ProjectFolder[]>([]);
+  const [independentConversations, setIndependentConversations] = useState<ConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const newProjectInputRef = useRef<HTMLInputElement>(null);
   const initialPromptSent = useRef(false);
 
   const scrollToBottom = () => {
@@ -59,6 +92,88 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
     scrollToBottom();
   }, [messages, isLoading]);
 
+  // Fetch real filesystem projects from backend
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects');
+      if (res.ok) {
+        const data: ProjectFolder[] = await res.json();
+        setProjects(data);
+        if (data.length > 0) {
+          setExpandedProjects(prev => {
+            if (Object.keys(prev).length === 0) {
+              return { [data[0].id]: true };
+            }
+            return prev;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load projects from filesystem:', err);
+    }
+  }, []);
+
+  // Fetch independent conversations from backend
+  const fetchIndependentConversations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/conversations');
+      if (res.ok) {
+        const data: ConversationSummary[] = await res.json();
+        setIndependentConversations(data);
+      }
+    } catch (err) {
+      console.error('Failed to load independent conversations from filesystem:', err);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchProjects();
+    fetchIndependentConversations();
+  }, [fetchProjects, fetchIndependentConversations]);
+
+  // Auto focus inline project input
+  useEffect(() => {
+    if (isCreatingProject) {
+      newProjectInputRef.current?.focus();
+    }
+  }, [isCreatingProject]);
+
+  // Handle + New Conversation (independent, disk-backed)
+  const handleCreateIndependentConversation = useCallback(async () => {
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Conversation' })
+      });
+      if (res.ok) {
+        const newConv: ConversationDetail = await res.json();
+        setActiveConversationId(newConv.id);
+        setActiveProjectId(null);
+        setMessages([]);
+        onResetFactoryState();
+        await fetchIndependentConversations();
+        textareaRef.current?.focus();
+      }
+    } catch (err) {
+      console.error('Failed to create independent conversation:', err);
+    }
+  }, [fetchIndependentConversations, onResetFactoryState]);
+
+  // Shortcut Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        handleCreateIndependentConversation();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleCreateIndependentConversation]);
+
+  // Handle auto-send initialPrompt
   useEffect(() => {
     if (initialPrompt && initialPrompt.trim() && !initialPromptSent.current) {
       initialPromptSent.current = true;
@@ -66,17 +181,117 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
     }
   }, [initialPrompt]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
+  // Create real project directory on disk
+  const handleConfirmCreateProject = async () => {
+    const trimmed = newProjectName.trim();
+    if (!trimmed) {
+      setIsCreatingProject(false);
+      return;
+    }
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed })
+      });
+      if (res.ok) {
+        const created: ProjectFolder = await res.json();
+        setNewProjectName('');
+        setIsCreatingProject(false);
+        setExpandedProjects(prev => ({ ...prev, [created.id]: true }));
+        await fetchProjects();
+      }
+    } catch (err) {
+      console.error('Failed to create project folder on disk:', err);
+    }
+  };
+
+  // Create conversation inside a project directory
+  const handleCreateProjectConversation = async (projectId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Session', project_id: projectId })
+      });
+      if (res.ok) {
+        const newConv: ConversationDetail = await res.json();
+        setActiveConversationId(newConv.id);
+        setActiveProjectId(projectId);
         setMessages([]);
         onResetFactoryState();
+        setExpandedProjects(prev => ({ ...prev, [projectId]: true }));
+        await fetchProjects();
+        textareaRef.current?.focus();
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onResetFactoryState]);
+    } catch (err) {
+      console.error('Failed to create project conversation:', err);
+    }
+  };
+
+  // Load conversation from disk
+  const handleLoadConversation = async (convId: string, projectId: string | null = null) => {
+    try {
+      const res = await fetch(`/api/conversations/${convId}`);
+      if (res.ok) {
+        const detail: ConversationDetail = await res.json();
+        setActiveConversationId(detail.id);
+        setActiveProjectId(detail.project_id || projectId || null);
+        setMessages(detail.messages || []);
+        if (detail.project_state) {
+          onSelectProject(detail.project_state);
+        } else {
+          onResetFactoryState();
+        }
+        setShowHistoryModal(false);
+      }
+    } catch (err) {
+      console.error('Failed to load conversation from disk:', err);
+    }
+  };
+
+  // Delete project folder from disk
+  const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this project directory and all its files from disk?')) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (activeProjectId === projectId) {
+          setActiveProjectId(null);
+          setActiveConversationId(null);
+          setMessages([]);
+          onResetFactoryState();
+        }
+        await fetchProjects();
+      }
+    } catch (err) {
+      console.error('Failed to delete project folder:', err);
+    }
+  };
+
+  // Delete conversation file from disk
+  const handleDeleteConversation = async (convId: string, projectId: string | null, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (activeConversationId === convId) {
+          setActiveConversationId(null);
+          setMessages([]);
+          onResetFactoryState();
+        }
+        if (projectId) {
+          await fetchProjects();
+        } else {
+          await fetchIndependentConversations();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation file:', err);
+    }
+  };
 
   const toggleThinking = (idx: number) => {
     setExpandedThinking(prev => ({
@@ -115,7 +330,9 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
           document_context: uploadedDoc?.extracted_text || uploadedDoc?.extracted_text_preview || undefined,
           parallel_api_key: parallelKey || undefined,
           gemini_api_key: geminiKey || undefined,
-          deep_search: isDeepSearchActive
+          deep_search: isDeepSearchActive,
+          conversation_id: activeConversationId || undefined,
+          project_id: activeProjectId || undefined
         })
       });
 
@@ -124,6 +341,10 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
       }
 
       const data = await res.json();
+
+      if (data.conversation_id && (!activeConversationId || activeConversationId !== data.conversation_id)) {
+        setActiveConversationId(data.conversation_id);
+      }
 
       const assistantMessage: ChatMessage = {
         id: `msg-${Date.now()}-reply`,
@@ -145,6 +366,9 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
       if (data.updated_project) {
         onSelectProject(data.updated_project);
       }
+
+      fetchProjects();
+      fetchIndependentConversations();
     } catch (err) {
       console.error('Chat error:', err);
       const errorMessage: ChatMessage = {
@@ -180,16 +404,16 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
       const docData: DocumentUploadResponse = await res.json();
       setUploadedDoc(docData);
 
-      const noticeMessage: ChatMessage = {
-        id: `doc-${Date.now()}`,
+      const systemMsg: ChatMessage = {
+        id: `msg-${Date.now()}-upload`,
         role: 'assistant',
-        content: `Attached multimodal document **"${docData.filename}"** (${docData.page_count} pages, ${docData.total_characters.toLocaleString()} characters) into Gemini 2.5 context.\n\nI will incorporate this treatment into the video screenplay beats.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        content: `Ingested document **${docData.filename}** (${docData.page_count} pages, ${docData.total_characters.toLocaleString()} characters). Showrunner multi-agent context initialized.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        thinking: `Document ingested into multi-agent working memory: ${docData.filename}`
       };
-      setMessages(prev => [...prev, noticeMessage]);
+      setMessages(prev => [...prev, systemMsg]);
     } catch (err) {
-      console.error('Upload error:', err);
-      alert('Failed to parse uploaded document.');
+      console.error('Document upload error:', err);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -219,6 +443,12 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
     }
   ];
 
+  const activeProject = projects.find(p => p.id === activeProjectId);
+  const activeConversationTitle = 
+    activeProject?.conversations.find(c => c.id === activeConversationId)?.title ||
+    independentConversations.find(c => c.id === activeConversationId)?.title ||
+    (project ? project.title : 'New Session');
+
   return (
     <div className="flex h-screen bg-[#121316] text-[#ededf0] font-[family-name:var(--font-body)] overflow-hidden select-none">
       
@@ -230,14 +460,12 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
           sidebarOpen ? 'w-64' : 'w-0'
         } transition-all duration-200 ease-in-out bg-[#15161a] border-r border-[#282930] flex flex-col justify-between overflow-hidden z-20 shrink-0 text-xs`}
       >
-        <div className="p-3 space-y-3">
-          {/* New Conversation Action Button */}
+        <div className="p-3 space-y-3 overflow-y-auto flex-1">
+          {/* New Independent Conversation Button */}
           <button
-            onClick={() => {
-              setMessages([]);
-              onResetFactoryState();
-            }}
+            onClick={handleCreateIndependentConversation}
             className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#1e1f24] hover:bg-[#25262c] text-[#ededf0] text-xs font-medium border border-[#282930] transition-colors group cursor-pointer"
+            title="Start an independent conversation (not under any project)"
           >
             <span className="flex items-center gap-2">
               <Plus className="w-3.5 h-3.5 text-[#92949f] group-hover:text-white transition-colors" />
@@ -249,72 +477,213 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
           {/* Quick Nav Links */}
           <div className="space-y-0.5 pt-1">
             <button 
-              onClick={() => {}}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[#92949f] hover:text-[#ededf0] hover:bg-[#1e1f24] transition-colors"
+              onClick={() => setShowHistoryModal(true)}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[#92949f] hover:text-[#ededf0] hover:bg-[#1e1f24] transition-colors cursor-pointer group"
             >
-              <Clock className="w-3.5 h-3.5" />
-              <span>Conversation History</span>
+              <span className="flex items-center gap-2.5">
+                <Clock className="w-3.5 h-3.5 group-hover:text-[#38bdf8] transition-colors" />
+                <span>Conversation History</span>
+              </span>
+              {independentConversations.length > 0 && (
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#18191d] text-[#5c5e69] border border-[#282930]">
+                  {independentConversations.length}
+                </span>
+              )}
             </button>
-            <button 
-              onClick={() => {}}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[#92949f] hover:text-[#ededf0] hover:bg-[#1e1f24] transition-colors"
-            >
+
+            <div className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[#5c5e69] cursor-default">
               <Timer className="w-3.5 h-3.5" />
               <span>Scheduled Tasks</span>
-            </button>
+            </div>
           </div>
 
-          {/* Projects Tree Section */}
+          {/* ==================================================== */}
+          {/* REAL FILESYSTEM PROJECTS DIRECTORY SECTION           */}
+          {/* ==================================================== */}
           <div className="pt-3 border-t border-[#282930] space-y-2">
             <div className="flex items-center justify-between px-1 text-[11px] font-medium text-[#5c5e69] uppercase tracking-wider">
-              <span>Projects</span>
+              <span className="flex items-center gap-1.5">
+                <span>Projects</span>
+                <span className="text-[10px] font-mono text-[#42444d]">({projects.length})</span>
+              </span>
               <div className="flex items-center gap-1">
-                <button className="hover:text-white transition-colors"><Plus className="w-3 h-3" /></button>
-              </div>
-            </div>
-
-            {/* Folder 1: Active Showrunner Workspace */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 px-1 py-1 text-[#92949f] hover:text-[#ededf0] cursor-pointer">
-                <FolderOpen className="w-3.5 h-3.5 text-[#3b82f6]" />
-                <span className="truncate font-medium">agentic blockbuster h...</span>
-              </div>
-
-              {/* Active Conversation Pill (Matching Screenshot) */}
-              <div className="pl-4 space-y-1">
-                <div 
-                  onClick={onOpenStudio}
-                  className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-[#222328] border border-[#2e3036] text-[#ededf0] font-medium cursor-pointer shadow-sm"
+                <button 
+                  onClick={() => setIsCreatingProject(true)}
+                  className="p-1 rounded hover:bg-[#1e1f24] hover:text-white transition-colors cursor-pointer"
+                  title="Create real project working directory on disk"
                 >
-                  <span className="truncate max-w-[140px]">
-                    {project ? project.title : 'Showrunner AI Product Pl...'}
-                  </span>
-                  <span className="text-[10px] text-[#5c5e69] font-mono shrink-0">
-                    {project ? 'Active' : '20m'}
-                  </span>
-                </div>
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
-                {/* Other past sessions */}
-                <div 
-                  onClick={() => handleSendMessage('Create a 12-minute video essay on why the Concorde supersonic airliner failed.')}
-                  className="flex items-center justify-between px-2.5 py-1.5 rounded-md text-[#92949f] hover:text-[#ededf0] hover:bg-[#1e1f24] transition-colors cursor-pointer"
+            {/* Inline Project Directory Creator */}
+            {isCreatingProject && (
+              <div className="p-2 rounded-lg bg-[#18191d] border border-[#3a3b44] space-y-2 animate-fade-in">
+                <div className="text-[10px] font-mono text-[#38bdf8] flex items-center gap-1">
+                  <Folder className="w-3 h-3" />
+                  <span>New Project Folder</span>
+                </div>
+                <input
+                  ref={newProjectInputRef}
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleConfirmCreateProject();
+                    if (e.key === 'Escape') {
+                      setIsCreatingProject(false);
+                      setNewProjectName('');
+                    }
+                  }}
+                  placeholder="e.g. apollo-documentary"
+                  className="w-full px-2 py-1 bg-[#121316] border border-[#282930] rounded text-xs text-[#ededf0] focus:outline-none focus:border-[#38bdf8]"
+                />
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    onClick={() => {
+                      setIsCreatingProject(false);
+                      setNewProjectName('');
+                    }}
+                    className="p-1 text-[#92949f] hover:text-white rounded hover:bg-[#222328]"
+                    title="Cancel"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleConfirmCreateProject}
+                    disabled={!newProjectName.trim()}
+                    className="p-1 text-[#22c55e] hover:text-white rounded hover:bg-[#22c55e]/20 disabled:opacity-40"
+                    title="Create directory on disk"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* List of Real Local Projects */}
+            {projects.length === 0 && !isCreatingProject ? (
+              <div className="px-2 py-3 rounded-lg border border-dashed border-[#282930] text-center space-y-1">
+                <div className="text-[11px] text-[#5c5e69]">No projects found on disk.</div>
+                <button
+                  onClick={() => setIsCreatingProject(true)}
+                  className="text-[11px] text-[#e5a93c] hover:underline inline-flex items-center gap-1 cursor-pointer"
                 >
-                  <span className="truncate max-w-[140px]">Resume Workspace Sessio...</span>
-                  <span className="text-[10px] text-[#5c5e69] font-mono shrink-0">4h</span>
-                </div>
+                  <Plus className="w-3 h-3" />
+                  <span>Create Project Folder</span>
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-1">
+                {projects.map((p) => {
+                  const isExpanded = expandedProjects[p.id] ?? false;
+                  const isCurrentProject = activeProjectId === p.id;
 
-            {/* Folder 2: Secondary Folder */}
-            <div className="pt-1">
-              <div className="flex items-center gap-1.5 px-1 py-1 text-[#5c5e69]">
-                <Folder className="w-3.5 h-3.5" />
-                <span className="truncate">personal_portfolio</span>
+                  return (
+                    <div key={p.id} className="space-y-0.5">
+                      {/* Project Header Row */}
+                      <div 
+                        onClick={() => {
+                          setExpandedProjects(prev => ({
+                            ...prev,
+                            [p.id]: !prev[p.id]
+                          }));
+                        }}
+                        className={`group flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-[#1e1f24] transition-colors cursor-pointer ${
+                          isCurrentProject ? 'text-[#ededf0] bg-[#1a1b20]' : 'text-[#92949f]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate max-w-[170px]">
+                          {isExpanded ? (
+                            <ChevronDown className="w-3 h-3 text-[#5c5e69] shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3 text-[#5c5e69] shrink-0" />
+                          )}
+                          {isExpanded ? (
+                            <FolderOpen className="w-3.5 h-3.5 text-[#3b82f6] shrink-0" />
+                          ) : (
+                            <Folder className="w-3.5 h-3.5 text-[#3b82f6] shrink-0" />
+                          )}
+                          <span className="truncate font-medium text-xs group-hover:text-white" title={p.name}>
+                            {p.name}
+                          </span>
+                        </div>
+
+                        {/* Project Row Hover Actions */}
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => handleCreateProjectConversation(p.id, e)}
+                            className="p-1 hover:text-white hover:bg-[#282930] rounded cursor-pointer"
+                            title="New conversation in this project"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteProject(p.id, e)}
+                            className="p-1 hover:text-red-400 hover:bg-[#282930] rounded cursor-pointer"
+                            title="Delete project folder from disk"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Project Conversations List (Physical files inside project/conversations/) */}
+                      {isExpanded && (
+                        <div className="pl-5 space-y-0.5 border-l border-[#282930] ml-3 mt-0.5">
+                          {p.conversations.length === 0 ? (
+                            <div className="px-2 py-1 text-[11px] text-[#5c5e69] flex items-center justify-between">
+                              <span>No sessions yet</span>
+                              <button
+                                onClick={(e) => handleCreateProjectConversation(p.id, e)}
+                                className="text-[10px] text-[#e5a93c] hover:underline cursor-pointer"
+                              >
+                                + New
+                              </button>
+                            </div>
+                          ) : (
+                            p.conversations.map((c) => {
+                              const isActive = activeConversationId === c.id;
+                              return (
+                                <div
+                                  key={c.id}
+                                  onClick={() => handleLoadConversation(c.id, p.id)}
+                                  className={`group/conv flex items-center justify-between px-2 py-1.5 rounded-md text-[11px] transition-colors cursor-pointer ${
+                                    isActive 
+                                      ? 'bg-[#222328] text-white border border-[#2e3036] font-medium shadow-sm' 
+                                      : 'text-[#92949f] hover:text-[#ededf0] hover:bg-[#1e1f24]'
+                                  }`}
+                                  title={c.title}
+                                >
+                                  <div className="flex items-center gap-1.5 truncate max-w-[130px]">
+                                    <MessageSquare className={`w-3 h-3 shrink-0 ${isActive ? 'text-[#e5a93c]' : 'text-[#5c5e69]'}`} />
+                                    <span className="truncate">{c.title}</span>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className="text-[10px] text-[#5c5e69] font-mono group-hover/conv:hidden">
+                                      {formatTimeAgo(c.updated_at)}
+                                    </span>
+                                    <button
+                                      onClick={(e) => handleDeleteConversation(c.id, p.id, e)}
+                                      className="hidden group-hover/conv:flex p-0.5 hover:text-red-400 rounded cursor-pointer"
+                                      title="Delete conversation from disk"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <div className="pl-6 text-[11px] text-[#5c5e69] py-0.5">
-                No conversations yet
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -340,11 +709,115 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
       </aside>
 
       {/* ======================================================== */}
+      {/* CONVERSATION HISTORY MODAL (INDEPENDENT SESSIONS)        */}
+      {/* ======================================================== */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-lg rounded-xl bg-[#18191d] border border-[#282930] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="px-4 py-3 border-b border-[#282930] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#38bdf8]" />
+                <span className="font-semibold text-sm text-[#ededf0]">Conversation History</span>
+                <span className="text-xs text-[#5c5e69] font-mono">({independentConversations.length})</span>
+              </div>
+              <button 
+                onClick={() => setShowHistoryModal(false)}
+                className="p-1 rounded text-[#92949f] hover:text-white hover:bg-[#222328]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search Filter */}
+            <div className="p-3 border-b border-[#282930] bg-[#141518]">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#18191d] border border-[#282930]">
+                <Search className="w-3.5 h-3.5 text-[#5c5e69]" />
+                <input
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Filter past conversations..."
+                  className="w-full bg-transparent text-xs text-[#ededf0] placeholder-[#5c5e69] focus:outline-none"
+                />
+                {historySearch && (
+                  <button onClick={() => setHistorySearch('')} className="text-[#5c5e69] hover:text-white">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Conversations List */}
+            <div className="p-3 overflow-y-auto space-y-1 flex-1">
+              {independentConversations.filter(c => c.title.toLowerCase().includes(historySearch.toLowerCase())).length === 0 ? (
+                <div className="py-8 text-center text-xs text-[#5c5e69] space-y-2">
+                  <p>No conversations found.</p>
+                  <button
+                    onClick={() => {
+                      setShowHistoryModal(false);
+                      handleCreateIndependentConversation();
+                    }}
+                    className="text-xs text-[#e5a93c] hover:underline"
+                  >
+                    Start a new conversation
+                  </button>
+                </div>
+              ) : (
+                independentConversations
+                  .filter(c => c.title.toLowerCase().includes(historySearch.toLowerCase()))
+                  .map((conv) => {
+                    const isActive = activeConversationId === conv.id;
+                    return (
+                      <div
+                        key={conv.id}
+                        onClick={() => handleLoadConversation(conv.id, null)}
+                        className={`group p-2.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-between ${
+                          isActive
+                            ? 'bg-[#222328] border-[#3a3b44] text-white'
+                            : 'bg-[#15161a] border-[#282930] text-[#92949f] hover:bg-[#1e1f24] hover:text-[#ededf0]'
+                        }`}
+                      >
+                        <div className="space-y-0.5 max-w-[340px]">
+                          <div className="text-xs font-medium truncate text-[#ededf0] flex items-center gap-1.5">
+                            <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#e5a93c]' : 'text-[#38bdf8]'}`} />
+                            <span className="truncate">{conv.title}</span>
+                          </div>
+                          <div className="text-[10px] text-[#5c5e69] font-mono flex items-center gap-2">
+                            <span>{formatTimeAgo(conv.updated_at)}</span>
+                            <span>•</span>
+                            <span>{conv.message_count} messages</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isActive && (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#e5a93c]/10 text-[#e5a93c] border border-[#e5a93c]/30">
+                              Active
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => handleDeleteConversation(conv.id, null, e)}
+                            className="p-1.5 rounded text-[#5c5e69] hover:text-red-400 hover:bg-[#282930] transition-colors"
+                            title="Delete conversation from disk"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
       {/* MAIN PANE: ANTIGRAVITY IDE WORKSPACE CHAT               */}
       {/* ======================================================== */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#121316]">
         
-        {/* Top IDE Window Header Bar (Matching Reference Screenshot) */}
+        {/* Top IDE Window Header Bar */}
         <header className="h-10 px-3 border-b border-[#282930] flex items-center justify-between bg-[#121316] shrink-0 text-xs select-none">
           <div className="flex items-center gap-2">
             {/* Sidebar toggle icon */}
@@ -357,13 +830,15 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
             </button>
 
             {/* History navigation */}
-            <button 
-              onClick={onReturnToLanding}
-              className="p-1 rounded text-[#92949f] hover:text-white hover:bg-[#1e1f24] transition-colors cursor-pointer" 
-              title="Back"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
+            {onReturnToLanding && (
+              <button 
+                onClick={onReturnToLanding}
+                className="p-1 rounded text-[#92949f] hover:text-white hover:bg-[#1e1f24] transition-colors cursor-pointer" 
+                title="Back to Landing"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button 
               className="p-1 rounded text-[#5c5e69] cursor-not-allowed" 
               title="Forward" 
@@ -372,26 +847,28 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
 
-            {/* Breadcrumb Path */}
+            {/* Breadcrumb Path from Disk Workspace */}
             <div className="flex items-center gap-1 text-[11px] text-[#92949f] font-mono ml-2">
-              <span className="hover:text-white cursor-pointer">agentic blockbuster hackathon</span>
+              <span className="hover:text-white cursor-pointer">workspace</span>
               <span className="text-[#5c5e69]">/</span>
+              {activeProject ? (
+                <>
+                  <span className="hover:text-white cursor-pointer text-[#3b82f6]">{activeProject.name}</span>
+                  <span className="text-[#5c5e69]">/</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-[#5c5e69]">conversations</span>
+                  <span className="text-[#5c5e69]">/</span>
+                </>
+              )}
               <span className="text-[#ededf0] font-medium truncate max-w-xs">
-                {project ? project.title : 'Showrunner AI Product Plan'}
+                {activeConversationTitle}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Engine Status / Action Pill Button */}
-            <button
-              onClick={onOpenSettings}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#1e1f24] hover:bg-[#282930] border border-[#282930] text-[11px] text-[#ededf0] font-medium transition-colors cursor-pointer shadow-sm"
-            >
-              <Sparkles className="w-3 h-3 text-[#38bdf8]" />
-              <span>Install IDE</span>
-            </button>
-
             {/* Open Studio Canvas Action Button */}
             {project && (
               <button
@@ -402,6 +879,15 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
                 <span>Open Canvas</span>
               </button>
             )}
+
+            {/* Engine Status / Action Pill Button */}
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#1e1f24] hover:bg-[#282930] border border-[#282930] text-[11px] text-[#ededf0] font-medium transition-colors cursor-pointer shadow-sm"
+            >
+              <Sparkles className="w-3 h-3 text-[#38bdf8]" />
+              <span>Studio Engine</span>
+            </button>
           </div>
         </header>
 
@@ -421,7 +907,7 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
                     Showrunner AI Studio
                   </h1>
                   <p className="text-xs text-[#92949f] leading-relaxed">
-                    Autonomous multi-agent pre-production engine. Pitch a topic, upload a script PDF, or ask for visual directives. Powered by Gemini 2.5 and Parallel Web Systems.
+                    Autonomous multi-agent pre-production engine. Pitch a topic, upload a script PDF, or ask for visual directives. Every session persists automatically to your local disk workspace.
                   </p>
                 </div>
 
@@ -479,7 +965,7 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
                       </div>
                     )}
 
-                    {/* Message Bubble (Matching Screenshot Format) */}
+                    {/* Message Bubble */}
                     <div
                       className={`p-3.5 rounded-xl leading-relaxed ${
                         isUser 
@@ -583,7 +1069,7 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
         </div>
 
         {/* ======================================================== */}
-        {/* BOTTOM PROMPT CONSOLE (Matching Reference Screenshot)    */}
+        {/* BOTTOM PROMPT CONSOLE                                    */}
         {/* ======================================================== */}
         <div className="p-3 bg-[#121316] shrink-0 border-t border-[#282930]">
           <div className="max-w-3xl mx-auto space-y-2">
@@ -607,18 +1093,18 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
               </div>
             )}
 
-            {/* Remote Status Card (Exact match to screenshot) */}
+            {/* Remote Status Card */}
             <div className="px-1 flex items-center justify-between text-[11px] font-mono text-[#92949f]">
               <div className="flex items-center gap-2">
-                <span className="text-[#5c5e69]">Remote Status</span>
+                <span className="text-[#5c5e69]">Disk Workspace</span>
                 <span className="text-[#282930]">•</span>
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
-                  <span className="text-[#ededf0]">1 task running</span>
+                  <span className="text-[#ededf0]">FastAPI Storage Ready</span>
                 </div>
                 <span className="text-[#5c5e69] flex items-center gap-1">
                   <Terminal className="w-3 h-3" />
-                  <span>python run.py</span>
+                  <span>workspace/projects/</span>
                 </span>
               </div>
             </div>
@@ -639,12 +1125,12 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
                     handleSendMessage();
                   }
                 }}
-                placeholder="Ask anything, @ to mention, / for actions"
+                placeholder="Ask anything, type a video pitch, or paste lore notes..."
                 rows={1}
                 className="w-full bg-transparent text-xs text-[#ededf0] placeholder-[#5c5e69] focus:outline-none resize-none leading-relaxed font-sans px-1"
               />
 
-              {/* Bottom Actions Bar Inside Input Container (Matching Screenshot) */}
+              {/* Bottom Actions Bar Inside Input Container */}
               <div className="flex items-center justify-between pt-2 mt-1 border-t border-[#282930]">
                 <div className="flex items-center gap-1.5">
                   {/* Plus / Attach button */}
@@ -677,7 +1163,7 @@ export const DeepSeekChat: React.FC<DeepSeekChatProps> = ({
                               setSelectedModel(m);
                               setShowModelPicker(false);
                             }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-md text-[#ededf0] hover:bg-[#222328] transition-colors flex items-center justify-between"
+                            className="w-full text-left px-2.5 py-1.5 rounded-md text-[#ededf0] hover:bg-[#222328] transition-colors flex items-center justify-between cursor-pointer"
                           >
                             <span>{m}</span>
                             {selectedModel === m && <CheckCircle2 className="w-3 h-3 text-[#22c55e]" />}

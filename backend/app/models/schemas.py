@@ -93,10 +93,14 @@ class AuditPacingRequest(BaseModel):
     beats: List[ScriptBeat]
 
 class ChatMessage(BaseModel):
+    id: Optional[str] = None
     role: str  # "user" or "assistant"
     content: str
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).strftime("%H:%M"))
     citations: List[str] = Field(default_factory=list)
+    thinking: Optional[str] = None
+    projectResult: Optional[ShowrunnerProject] = None
+    videoReady: Optional[bool] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -106,6 +110,8 @@ class ChatRequest(BaseModel):
     parallel_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
     deep_search: bool = True
+    conversation_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     reply: str
@@ -113,6 +119,7 @@ class ChatResponse(BaseModel):
     citations: List[str] = Field(default_factory=list)
     thinking: Optional[str] = None
     video_ready: bool = False
+    conversation_id: Optional[str] = None
 
 class BoundingBox(BaseModel):
     x: float
@@ -145,5 +152,48 @@ class SpatialCommentResponse(BaseModel):
     updated_beat: ScriptBeat
     rationale: str
     applied_directive: str
+
+# ===== LOCAL FILESYSTEM PROJECT & CONVERSATION STORAGE MODELS =====
+
+class ConversationSummary(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int
+    project_id: Optional[str] = None
+
+class ConversationDetail(BaseModel):
+    id: str
+    title: str
+    project_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+    messages: List[ChatMessage] = Field(default_factory=list)
+    project_state: Optional[ShowrunnerProject] = None
+
+class ProjectFolder(BaseModel):
+    id: str
+    name: str
+    slug: str
+    folder_path: str
+    created_at: str
+    updated_at: str
+    description: Optional[str] = ""
+    conversations: List[ConversationSummary] = Field(default_factory=list)
+
+class CreateProjectRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+
+class CreateConversationRequest(BaseModel):
+    title: Optional[str] = "New Conversation"
+    project_id: Optional[str] = None
+
+class SaveConversationRequest(BaseModel):
+    title: Optional[str] = None
+    messages: List[ChatMessage] = Field(default_factory=list)
+    project_state: Optional[ShowrunnerProject] = None
+
 
 

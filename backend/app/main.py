@@ -1,5 +1,7 @@
 import logging
-from typing import List, Dict, Any
+import time
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,11 +13,29 @@ from app.models.schemas import (
     ResearchDossier,
     AuditPacingRequest,
     PacingMetrics,
-    ScriptBeat
+    ScriptBeat,
+    ProjectFolder,
+    ConversationSummary,
+    ConversationDetail,
+    CreateProjectRequest,
+    CreateConversationRequest,
+    SaveConversationRequest,
+    ChatMessage
 )
 from app.agents.orchestrator import showrunner_orchestrator
 from app.tools.parallel_tool import ParallelTool
 from app.agents.retention_auditor import RetentionAuditorAgent
+from app.storage import (
+    create_project,
+    list_projects,
+    get_project,
+    delete_project,
+    list_independent_conversations,
+    create_conversation,
+    get_conversation,
+    save_conversation,
+    delete_conversation
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -99,12 +119,72 @@ def audit_pacing(request: AuditPacingRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# =====================================================================
+# REAL LOCAL FILESYSTEM PROJECT & CONVERSATION APIS
+# =====================================================================
+
+@app.get("/api/projects", response_model=List[ProjectFolder])
+def api_list_projects():
+    """Returns all project folders stored on local disk under workspace/projects/"""
+    return list_projects()
+
+@app.post("/api/projects", response_model=ProjectFolder)
+def api_create_project(request: CreateProjectRequest):
+    """Creates a real project working directory on the local file system"""
+    name = request.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
+    return create_project(name=name, description=request.description or "")
+
+@app.delete("/api/projects/{project_id}")
+def api_delete_project(project_id: str):
+    """Deletes a project directory and all its conversations from disk"""
+    success = delete_project(project_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "deleted", "project_id": project_id}
+
+@app.get("/api/conversations", response_model=List[ConversationSummary])
+def api_list_conversations():
+    """Returns all independent conversations (not bound to any project folder)"""
+    return list_independent_conversations()
+
+@app.post("/api/conversations", response_model=ConversationDetail)
+def api_create_conversation(request: CreateConversationRequest):
+    """Creates a new independent conversation or project-scoped conversation on disk"""
+    return create_conversation(title=request.title or "New Conversation", project_id=request.project_id)
+
+@app.get("/api/conversations/{conversation_id}", response_model=ConversationDetail)
+def api_get_conversation(conversation_id: str):
+    """Loads a conversation and its active screenplay state from disk"""
+    conv = get_conversation(conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv
+
+@app.put("/api/conversations/{conversation_id}", response_model=ConversationDetail)
+def api_save_conversation(conversation_id: str, request: SaveConversationRequest):
+    """Saves updated messages and project state to the conversation JSON on disk"""
+    conv = save_conversation(conversation_id, request)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv
+
+@app.delete("/api/conversations/{conversation_id}")
+def api_delete_conversation(conversation_id: str):
+    """Deletes a conversation file from disk"""
+    success = delete_conversation(conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "deleted", "conversation_id": conversation_id}
+
 @app.get("/api/sample-projects")
 def get_sample_projects() -> List[Dict[str, Any]]:
     """
-    Returns existing creator projects. Clean state with zero synthetic demo data.
+    Returns existing creator projects from local storage.
     """
-    return []
+    return [p.model_dump() for p in list_projects()]
+
 
 
 @app.post("/api/export")
@@ -215,6 +295,70 @@ async def upload_document(file: UploadFile = File(...)):
         logger.error(f"Error processing uploaded document: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=f"Failed to parse document: {str(e)}")
 
+def _persist_chat_turn(
+    conv_id: Optional[str],
+    project_id: Optional[str],
+    user_msg_str: str,
+    history: List[ChatMessage],
+    reply_str: str,
+    citations_list: List[str],
+    thinking_str: Optional[str],
+    project_result: Optional[ShowrunnerProject],
+    video_ready_bool: bool,
+    incoming_project: Optional[ShowrunnerProject]
+) -> Optional[str]:
+    try:
+        if not conv_id:
+            initial_title = user_msg_str.strip()[:36] or "New Conversation"
+            conv = create_conversation(title=initial_title, project_id=project_id)
+            conv_id = conv.id
+            existing_messages = []
+        else:
+            existing = get_conversation(conv_id)
+            if not existing:
+                conv = create_conversation(title=user_msg_str.strip()[:36] or "New Conversation", project_id=project_id)
+                conv_id = conv.id
+                existing_messages = []
+            else:
+                existing_messages = list(existing.messages)
+
+        now_time = datetime.now(timezone.utc).strftime("%H:%M")
+        user_msg = ChatMessage(
+            id=f"msg_{int(time.time() * 1000)}_u",
+            role="user",
+            content=user_msg_str,
+            timestamp=now_time
+        )
+        assistant_msg = ChatMessage(
+            id=f"msg_{int(time.time() * 1000) + 1}_a",
+            role="assistant",
+            content=reply_str,
+            timestamp=now_time,
+            citations=citations_list,
+            thinking=thinking_str,
+            projectResult=project_result,
+            videoReady=video_ready_bool
+        )
+
+        if history and len(history) > len(existing_messages):
+            all_messages = list(history)
+            all_messages.append(assistant_msg)
+        else:
+            all_messages = existing_messages + [user_msg, assistant_msg]
+
+        final_project = project_result if project_result else incoming_project
+        save_conversation(
+            conv_id=conv_id,
+            request=SaveConversationRequest(
+                messages=all_messages,
+                project_state=final_project
+            )
+        )
+        return conv_id
+    except Exception as e:
+        logger.error(f"Error persisting chat to disk: {e}", exc_info=True)
+        return conv_id
+
 @app.post("/api/chat", response_model=ChatResponse)
 def handle_chat(request: ChatRequest):
     """
@@ -281,12 +425,26 @@ def handle_chat(request: ChatRequest):
                 )
                 citations = [f"{s.title}: {s.url}" for s in updated_project.research.sources[:4]]
 
+                final_conv_id = _persist_chat_turn(
+                    conv_id=request.conversation_id,
+                    project_id=request.project_id,
+                    user_msg_str=user_msg,
+                    history=request.history,
+                    reply_str=reply_text,
+                    citations_list=citations,
+                    thinking_str=thinking_text,
+                    project_result=updated_project,
+                    video_ready_bool=video_ready,
+                    incoming_project=request.project
+                )
+
                 return ChatResponse(
                     reply=reply_text,
                     updated_project=updated_project,
                     citations=citations,
                     thinking=thinking_text,
-                    video_ready=video_ready
+                    video_ready=video_ready,
+                    conversation_id=final_conv_id
                 )
             except Exception as pe:
                 logger.error(f"Project generation during chat failed: {pe}", exc_info=True)
@@ -390,12 +548,26 @@ Guidelines:
                     "If you have an active video open, you can click directly on the video text to resize or format it."
                 )
 
+        final_conv_id = _persist_chat_turn(
+            conv_id=request.conversation_id,
+            project_id=request.project_id,
+            user_msg_str=user_msg,
+            history=request.history,
+            reply_str=reply_text,
+            citations_list=citations,
+            thinking_str=thinking_text,
+            project_result=updated_project,
+            video_ready_bool=video_ready,
+            incoming_project=request.project
+        )
+
         return ChatResponse(
             reply=reply_text,
             updated_project=updated_project,
             citations=citations,
             thinking=thinking_text,
-            video_ready=video_ready
+            video_ready=video_ready,
+            conversation_id=final_conv_id
         )
     except Exception as e:
         logger.error(f"Chat failed: {e}", exc_info=True)

@@ -38,3 +38,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
+
+# Workspace User Storage
+workspace/conversations/*.json
+!workspace/conversations/.gitkeep
+workspace/projects/*
+!workspace/projects/.gitkeep
