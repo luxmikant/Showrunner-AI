@@ -45,7 +45,7 @@ class ShowrunnerOrchestrator:
         
         # Stage 3: Visual Director & Storyboard Directives
         director = VisualDirectorAgent()
-        _ = director.enrich_storyboard_directives(beats=beats, dossier=dossier)
+        storyboard_cards = director.enrich_storyboard_directives(beats=beats, dossier=dossier)
         
         # Stage 4: Retention & Packaging Auditor
         auditor = RetentionAuditorAgent()
@@ -66,6 +66,7 @@ class ShowrunnerOrchestrator:
             target_audience="Digital entertainment viewers, video essayists & curious minds",
             research=dossier,
             script_beats=beats,
+            storyboard_cards=storyboard_cards,
             packaging=packaging,
             metrics=metrics
         )

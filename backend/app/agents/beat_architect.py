@@ -13,13 +13,15 @@ class BeatArchitectAgent:
     Constructs pacing beats, narration, sound design cues, and visual descriptions.
     """
     def __init__(self, gemini_api_key: Optional[str] = None):
-        self.api_key = gemini_api_key or settings.GEMINI_API_KEY
+        raw_key = gemini_api_key or settings.GEMINI_API_KEY
+        self.api_key = raw_key.strip() if raw_key else ""
         self.client = None
         if self.api_key:
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key)
-                logger.info("[BeatArchitectAgent] Gemini client initialized.")
+                masked = f"{self.api_key[:8]}...{self.api_key[-4:]}"
+                logger.info(f"[LIVE GEMINI] Gemini client initialized with key {masked}.")
             except Exception as e:
                 logger.warning(f"[BeatArchitectAgent] Gemini client failed to initialize: {e}")
 
@@ -72,6 +74,8 @@ Requirements:
 
 Output MUST be a valid JSON array of objects conforming to the ScriptBeat schema.
 """
+        masked = f"{self.api_key[:8]}...{self.api_key[-4:]}"
+        logger.info(f"[LIVE GEMINI CALL] Generating structured AV script with model gemini-2.5-flash for '{topic}' (Key: {masked})")
         response = self.client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
@@ -80,11 +84,14 @@ Output MUST be a valid JSON array of objects conforming to the ScriptBeat schema
             )
         )
         data = json.loads(response.text)
+        if isinstance(data, dict) and 'beats' in data:
+            data = data['beats']
         if isinstance(data, list):
             beats = []
             for i, b in enumerate(data):
                 b["beat_id"] = i + 1
                 beats.append(ScriptBeat(**b))
+            logger.info(f"[LIVE GEMINI SUCCESS] Successfully received and parsed {len(beats)} structured ScriptBeats from Gemini 2.5 Flash!")
             return beats
         return None
 
