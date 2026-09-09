@@ -1,34 +1,51 @@
 @import "tailwindcss";
 
-/* ===== CINEMATIC NOIR STUDIO — Design Token System ===== */
+/* ===== ANTIGRAVITY IDE WORKSPACE — Design Token System ===== */
 :root {
-  /* Noir Scale */
-  --noir-950: #06080d;
-  --noir-900: #0a0e17;
-  --noir-850: #0d1219;
-  --noir-800: #111827;
-  --noir-700: #1e293b;
-  --noir-600: #334155;
-  --noir-500: #475569;
-  --noir-400: #94a3b8;
+  /* IDE Matte Charcoal Palette (Exact match to reference screenshot) */
+  --ide-bg-base: #121316;
+  --ide-bg-sidebar: #15161a;
+  --ide-bg-surface: #18191d;
+  --ide-bg-card: #222328;
+  --ide-bg-input: #1e1f24;
+  --ide-border: #282930;
+  --ide-border-hover: #3a3b44;
+  --ide-text-primary: #ededf0;
+  --ide-text-secondary: #92949f;
+  --ide-text-muted: #5c5e69;
+  --ide-badge-blue: #3b82f6;
+  --ide-badge-gold: #e5a93c;
+  --ide-badge-green: #22c55e;
+  --ide-badge-purple: #a855f7;
+
+  /* Noir Scale Mapped to Antigravity IDE Charcoal */
+  --noir-950: #121316;
+  --noir-900: #15161a;
+  --noir-850: #18191d;
+  --noir-800: #222328;
+  --noir-700: #282930;
+  --noir-600: #3a3b44;
+  --noir-500: #5c5e69;
+  --noir-400: #92949f;
   --noir-300: #cbd5e1;
   --noir-200: #e2e8f0;
-  --noir-100: #f1f5f9;
+  --noir-100: #ededf0;
   
-  /* Cinema Gold Accent */
+  /* Cinema Gold & Accents */
   --gold-600: #b8892e;
-  --gold-500: #d4a853;
-  --gold-400: #e4be6a;
-  --gold-300: #f0d78e;
-  --gold-200: #f7e5b5;
+  --gold-500: #e5a93c;
+  --gold-400: #f0be5c;
+  --gold-300: #f7d68b;
+  --gold-200: #fbeac4;
   
   /* Secondary Accents */
-  --cyan-400: #22d3ee;
-  --emerald-400: #34d399;
-  --rose-400: #fb7185;
+  --cyan-400: #38bdf8;
+  --emerald-400: #22c55e;
+  --rose-400: #f87171;
   
   /* Typography */
-  --font-display: 'Cinzel', serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-title: 'Cinzel', serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --font-cinematic: 'Bebas Neue', 'Oswald', sans-serif;
@@ -37,9 +54,9 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-smooth: cubic-bezier(0.4, 0, 0.2, 1);
   --duration-fast: 150ms;
-  --duration-normal: 300ms;
-  --duration-slow: 500ms;
-  --duration-page: 700ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-page: 600ms;
 }
 
 @layer base {
